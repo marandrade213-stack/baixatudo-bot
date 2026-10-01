@@ -9,6 +9,17 @@ import yt_dlp
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 
+# Username do canal obrigatório (coimport os
+import threading
+from flask import Flask
+import telebot
+from telebot import types
+import yt_dlp
+
+# Obter token do Telegram das variáveis de ambiente
+TOKEN = os.environ.get('TELEGRAM_TOKEN')
+bot = telebot.TeleBot(TOKEN)
+
 # Username do canal obrigatório (com @)
 CANAL_USERNAME = "@baixatudo1921"
 
@@ -87,9 +98,13 @@ def process_link(message):
             'quiet': True,
             'no_warnings': True,
             'max_filesize': 50 * 1024 * 1024, # Limite de 50MB do Telegram
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
-            }
+            'nocheckcertificate': True,
+            'ignoreerrors': False,
+            'logtostderr': False,
+            'add_header': [
+                'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+                'Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
+            ]
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -106,9 +121,9 @@ def process_link(message):
         bot.delete_message(message.chat.id, msg_status.message_id)
 
     except Exception as e:
-        print(f"Erro no download: {e}")
+        print(f"Erro detalhado no download: {e}")
         bot.edit_message_text(
-            f"❌ Não foi possível baixar o vídeo.\nVerifique se o link está correto ou se o vídeo não excede o limite de tamanho.",
+            f"❌ Não foi possível baixar este vídeo.\n\nMotivo: O link pode ser privado, expirado ou exceder o limite de 50MB.",
             chat_id=message.chat.id,
             message_id=msg_status.message_id
         )
