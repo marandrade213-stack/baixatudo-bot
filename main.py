@@ -1,77 +1,119 @@
 import os
-from threading import Thread
+import threading
 from flask import Flask
 import telebot
-from yt_dlp import YoutubeDL
+from telebot import types
+import yt_dlp
 
-# 1. Servidor Flask (Inicia primeiro para o Render detectar a porta imediatamente)
-app = Flask('')
+# Obter token do Telegram das variáveis de ambiente
+TOKEN = os.environ.get('TELEGRAM_TOKEN')
+bot = telebot.TeleBot(TOKEN)
+
+# Username do canal obrigatório (com @)
+CANAL_USERNAME = "@baixatudo1921"
+
+# Servidor Flask para manter o Render ativo
+app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "Bot de Downloads do Telegram rodando perfeitamente!"
 
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
 
-# Inicia o servidor web em segundo plano
-t = Thread(target=run_flask)
-t.daemon = True
-t.start()
+# Função para verificar se o usuário é inscrito no canal
+def usuario_inscrito(user_id):
+    try:
+        membro = bot.get_chat_member(CANAL_USERNAME, user_id)
+        # Status aceitos: criador, administrador ou membro ativo
+        if membro.status in ['creator', 'administrator', 'member']:
+            return True
+        return False
+    except Exception as e:
+        print(f"Erro ao verificar membro: {e}")
+        return False
 
-# 2. Leitura do Token do Telegram
-TOKEN = os.environ.get("TELEGRAM_TOKEN")
+# Função para enviar a mensagem solicitando inscrição
+def enviar_mensagem_inscricao(chat_id):
+    markup = types.InlineKeyboardMarkup()
+    btn_canal = types.InlineKeyboardButton("📢 Entrar no Canal", url=f"https://t.me/{CANAL_USERNAME.replace('@', '')}")
+    markup.add(btn_canal)
+    
+    bot.send_message(
+        chat_id,
+        f"⚠️ **Acesso Restrito!**\n\n"
+        f"Para utilizar o bot e baixar vídeos gratuitamente, você precisa estar inscrito no nosso canal oficial:\n\n"
+        f"👉 **{CANAL_USERNAME}**\n\n"
+        f"Após entrar no canal, tente enviar o link do vídeo novamente!",
+        reply_markup=markup,
+        parse_mode="Markdown"
+    )
 
-if not TOKEN:
-    print("AVISO: Variável TELEGRAM_TOKEN ainda não configurada no Render.")
-else:
-    bot = telebot.TeleBot(TOKEN)
+# Comando /start
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    if not usuario_inscrito(message.from_user.id):
+        enviar_mensagem_inscricao(message.chat.id)
+        return
 
-    @bot.message_handler(commands=['start', 'help'])
-    def send_welcome(message):
-        bot.reply_to(
-            message, 
-            "👋 Olá! Envie o link de um vídeo (Instagram, TikTok, YouTube) para baixar."
-        )
+    bot.reply_to(
+        message, 
+        "Olá! Envie um link do **Instagram**, **TikTok** ou **YouTube** para eu baixar o vídeo para você!"
+    )
 
-    @bot.message_handler(func=lambda message: True)
-    def download_video(message):
-        url = message.text.strip()
+# Processador de links e mensagens do usuário
+@bot.message_handler(func=lambda message: True)
+def process_link(message):
+    user_id = message.from_user.id
+    
+    # Trava do canal
+    if not usuario_inscrito(user_id):
+        enviar_mensagem_inscricao(message.chat.id)
+        return
 
-        if not url.startswith("http"):
-            bot.reply_to(message, "⚠️ Envie um link válido iniciando com http ou https.")
-            return
+    url = message.text.strip()
+    
+    if not (url.startswith("http://") or url.startswith("https://")):
+        bot.reply_to(message, "Por favor, envie um link válido de um vídeo.")
+        return
 
-        msg_espera = bot.reply_to(message, "⏳ Processando o vídeo, aguarde um momento...")
+    msg_status = bot.reply_to(message, "⏳ A processar o vídeo, aguarde um momento...")
 
+    try:
         ydl_opts = {
             'format': 'best',
-            'outtmpl': 'video_%(id)s.%(ext)s',
+            'outtmpl': '/tmp/%(id)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
+            'max_filesize': 50 * 1024 * 1024, # Limite de 50MB do Telegram
         }
 
-        try:
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                
-                if info is None:
-                    bot.edit_message_text("❌ Não foi possível extrair informações deste link.", chat_id=message.chat.id, message_id=msg_espera.message_id)
-                    return
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
 
-                filename = ydl.prepare_filename(info)
+        with open(filename, 'rb') as video_file:
+            bot.send_video(message.chat.id, video_file, caption="✅ Vídeo baixado com sucesso pelo @baixatudo1921_bot!")
 
-            with open(filename, 'rb') as video_file:
-                bot.send_video(message.chat.id, video_file)
+        # Apagar o ficheiro temporário local
+        if os.path.exists(filename):
+            os.remove(filename)
 
-            bot.delete_message(chat_id=message.chat.id, message_id=msg_espera.message_id)
-            if os.path.exists(filename):
-                os.remove(filename)
+        bot.delete_message(message.chat.id, msg_status.message_id)
 
-        except Exception as e:
-            print(f"Erro ao baixar vídeo: {e}")
-            bot.edit_message_text("❌ Ocorreu um erro ao tentar baixar este vídeo.", chat_id=message.chat.id, message_id=msg_espera.message_id)
+    except Exception as e:
+        bot.edit_message_text(
+            f"❌ Não foi possível baixar o vídeo.\nVerifique se o link está correto ou se o vídeo não excede o limite de tamanho.",
+            chat_id=message.chat.id,
+            message_id=msg_status.message_id
+        )
 
-    print("Bot do Telegram iniciado...")
+if __name__ == "__main__":
+    # Inicia o servidor Flask numa thread em segundo plano
+    threading.Thread(target=run_flask).start()
+    
+    # Inicia o Polling do Bot do Telegram
+    print("Bot rodando...")
     bot.infinity_polling()
