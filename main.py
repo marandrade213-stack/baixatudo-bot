@@ -27,7 +27,6 @@ def run_flask():
 def usuario_inscrito(user_id):
     try:
         membro = bot.get_chat_member(CANAL_USERNAME, user_id)
-        # Status aceitos: criador, administrador ou membro ativo
         if membro.status in ['creator', 'administrator', 'member']:
             return True
         return False
@@ -88,6 +87,9 @@ def process_link(message):
             'quiet': True,
             'no_warnings': True,
             'max_filesize': 50 * 1024 * 1024, # Limite de 50MB do Telegram
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+            }
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -97,13 +99,14 @@ def process_link(message):
         with open(filename, 'rb') as video_file:
             bot.send_video(message.chat.id, video_file, caption="✅ Vídeo baixado com sucesso pelo @baixatudo1921_bot!")
 
-        # Apagar o ficheiro temporário local
+        # Apagar o arquivo temporário local
         if os.path.exists(filename):
             os.remove(filename)
 
         bot.delete_message(message.chat.id, msg_status.message_id)
 
     except Exception as e:
+        print(f"Erro no download: {e}")
         bot.edit_message_text(
             f"❌ Não foi possível baixar o vídeo.\nVerifique se o link está correto ou se o vídeo não excede o limite de tamanho.",
             chat_id=message.chat.id,
@@ -111,9 +114,6 @@ def process_link(message):
         )
 
 if __name__ == "__main__":
-    # Inicia o servidor Flask numa thread em segundo plano
     threading.Thread(target=run_flask).start()
-    
-    # Inicia o Polling do Bot do Telegram
     print("Bot rodando...")
     bot.infinity_polling()
