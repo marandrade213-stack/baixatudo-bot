@@ -4,7 +4,7 @@ from flask import Flask
 import telebot
 from yt_dlp import YoutubeDL
 
-# 1. Servidor Flask (Inicia primeiro para o Render detectar a porta IMEDIATAMENTE)
+# 1. Servidor Flask (Inicia primeiro para o Render detectar a porta imediatamente)
 app = Flask('')
 
 @app.route('/')
@@ -15,7 +15,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# Sobe o servidor web em segundo plano antes do bot
+# Inicia o servidor web em segundo plano
 t = Thread(target=run_flask)
 t.daemon = True
 t.start()
