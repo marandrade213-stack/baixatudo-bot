@@ -1,9 +1,9 @@
 import os
 import threading
+import requests
 from flask import Flask
 import telebot
 from telebot import types
-import yt_dlp
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 bot = telebot.TeleBot(TOKEN)
@@ -14,7 +14,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot de Downloads do Telegram rodando perfeitamente!"
+    return "Bot de Downloads rodando!"
 
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
@@ -28,7 +28,7 @@ def usuario_inscrito(user_id):
         return False
     except Exception as e:
         print(f"Erro ao verificar membro: {e}")
-        return False
+        return True
 
 def enviar_mensagem_inscricao(chat_id):
     markup = types.InlineKeyboardMarkup()
@@ -38,12 +38,30 @@ def enviar_mensagem_inscricao(chat_id):
     bot.send_message(
         chat_id,
         f"⚠️ **Acesso Restrito!**\n\n"
-        f"Para utilizar o bot e baixar vídeos gratuitamente, você precisa estar inscrito no nosso canal oficial:\n\n"
-        f"👉 **{CANAL_USERNAME}**\n\n"
-        f"Após entrar no canal, tente enviar o link do vídeo novamente!",
+        f"Para utilizar o bot, inscreva-se no nosso canal oficial:\n\n"
+        f"👉 **{CANAL_USERNAME}**",
         reply_markup=markup,
         parse_mode="Markdown"
     )
+
+def baixar_tiktok_api(url):
+    api_url = f"https://www.tikwm.com/api/?url={url}"
+    response = requests.get(api_url, timeout=10).json()
+    if response.get("code") == 0:
+        return response["data"]["play"]
+    return None
+
+def baixar_cobalt_api(url):
+    api_url = "https://api.cobalt.tools/api/json"
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    payload = {"url": url}
+    response = requests.post(api_url, json=payload, headers=headers, timeout=15).json()
+    if "url" in response:
+        return response["url"]
+    return None
 
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
@@ -51,10 +69,7 @@ def send_welcome(message):
         enviar_mensagem_inscricao(message.chat.id)
         return
 
-    bot.reply_to(
-        message, 
-        "Olá! Envie um link do **Instagram**, **TikTok** ou **YouTube** para eu baixar o vídeo para você!"
-    )
+    bot.reply_to(message, "Envie o link de um vídeo do TikTok, Instagram ou YouTube para baixar!")
 
 @bot.message_handler(func=lambda message: True)
 def process_link(message):
@@ -67,46 +82,37 @@ def process_link(message):
     url = message.text.strip()
     
     if not (url.startswith("http://") or url.startswith("https://")):
-        bot.reply_to(message, "Por favor, envie um link válido de um vídeo.")
+        bot.reply_to(message, "Por favor, envie um link válido.")
         return
 
-    msg_status = bot.reply_to(message, "⏳ Processando o vídeo, aguarde um momento...")
+    msg_status = bot.reply_to(message, "⏳ Baixando o vídeo, aguarde...")
+
+    video_url = None
 
     try:
-        ydl_opts = {
-            'format': 'b[filesize<50M]/best[filesize<50M]/best',
-            'outtmpl': '/tmp/%(id)s.%(ext)s',
-            'quiet': True,
-            'no_warnings': True,
-            'max_filesize': 50 * 1024 * 1024,
-            'nocheckcertificate': True,
-            'ignoreerrors': False,
-            'logtostderr': False,
-            'geo_bypass': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-            }
-        }
+        # Se for TikTok, usa a API dedicada do TikWm
+        if "tiktok.com" in url:
+            video_url = baixar_tiktok_api(url)
+        
+        # Para Instagram / YouTube ou fallback do TikTok
+        if not video_url:
+            video_url = baixar_cobalt_api(url)
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-
-        with open(filename, 'rb') as video_file:
-            bot.send_video(message.chat.id, video_file, caption="✅ Vídeo baixado com sucesso pelo @baixatudo1921_bot!")
-
-        if os.path.exists(filename):
-            os.remove(filename)
-
-        bot.delete_message(message.chat.id, msg_status.message_id)
+        if video_url:
+            # Envia o vídeo direto a partir da URL gerada pela API
+            bot.send_video(
+                message.chat.id, 
+                video_url, 
+                caption="✅ Vídeo baixado com sucesso pelo @baixatudo1921_bot!"
+            )
+            bot.delete_message(message.chat.id, msg_status.message_id)
+        else:
+            raise Exception("Não foi possível extrair a URL do vídeo pelas APIs.")
 
     except Exception as e:
-        print(f"Erro detalhado no download: {e}")
+        print(f"Erro no processamento: {e}")
         bot.edit_message_text(
-            f"❌ Não foi possível baixar este vídeo.\n\nMotivo: O link pode ser privado, expirado ou exceder o limite de 50MB do Telegram.",
+            "❌ Não foi possível baixar este vídeo. Tente outro link ou tente novamente em alguns instantes.",
             chat_id=message.chat.id,
             message_id=msg_status.message_id
         )
