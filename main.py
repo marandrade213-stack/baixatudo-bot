@@ -9,17 +9,6 @@ import yt_dlp
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 
-# Username do canal obrigatório (coimport os
-import threading
-from flask import Flask
-import telebot
-from telebot import types
-import yt_dlp
-
-# Obter token do Telegram das variáveis de ambiente
-TOKEN = os.environ.get('TELEGRAM_TOKEN')
-bot = telebot.TeleBot(TOKEN)
-
 # Username do canal obrigatório (com @)
 CANAL_USERNAME = "@baixatudo1921"
 
