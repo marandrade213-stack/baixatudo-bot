@@ -5,14 +5,11 @@ import telebot
 from telebot import types
 import yt_dlp
 
-# Obter token do Telegram das variáveis de ambiente
 TOKEN = os.environ.get('TELEGRAM_TOKEN')
 bot = telebot.TeleBot(TOKEN)
 
-# Username do canal obrigatório (com @)
 CANAL_USERNAME = "@baixatudo1921"
 
-# Servidor Flask para manter o Render ativo
 app = Flask(__name__)
 
 @app.route('/')
@@ -23,7 +20,6 @@ def run_flask():
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
 
-# Função para verificar se o usuário é inscrito no canal
 def usuario_inscrito(user_id):
     try:
         membro = bot.get_chat_member(CANAL_USERNAME, user_id)
@@ -34,7 +30,6 @@ def usuario_inscrito(user_id):
         print(f"Erro ao verificar membro: {e}")
         return False
 
-# Função para enviar a mensagem solicitando inscrição
 def enviar_mensagem_inscricao(chat_id):
     markup = types.InlineKeyboardMarkup()
     btn_canal = types.InlineKeyboardButton("📢 Entrar no Canal", url=f"https://t.me/{CANAL_USERNAME.replace('@', '')}")
@@ -50,7 +45,6 @@ def enviar_mensagem_inscricao(chat_id):
         parse_mode="Markdown"
     )
 
-# Comando /start
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     if not usuario_inscrito(message.from_user.id):
@@ -62,12 +56,10 @@ def send_welcome(message):
         "Olá! Envie um link do **Instagram**, **TikTok** ou **YouTube** para eu baixar o vídeo para você!"
     )
 
-# Processador de links e mensagens do usuário
 @bot.message_handler(func=lambda message: True)
 def process_link(message):
     user_id = message.from_user.id
     
-    # Trava do canal
     if not usuario_inscrito(user_id):
         enviar_mensagem_inscricao(message.chat.id)
         return
@@ -86,7 +78,7 @@ def process_link(message):
             'outtmpl': '/tmp/%(id)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
-            'max_filesize': 50 * 1024 * 1024, # Limite de 50MB do Telegram
+            'max_filesize': 50 * 1024 * 1024,
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'logtostderr': False,
@@ -103,7 +95,6 @@ def process_link(message):
         with open(filename, 'rb') as video_file:
             bot.send_video(message.chat.id, video_file, caption="✅ Vídeo baixado com sucesso pelo @baixatudo1921_bot!")
 
-        # Apagar o arquivo temporário local
         if os.path.exists(filename):
             os.remove(filename)
 
