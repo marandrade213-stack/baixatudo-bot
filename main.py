@@ -1,41 +1,77 @@
-import os, threading
-import telebot, yt_dlp
+import os
+from threading import Thread
 from flask import Flask
+import telebot
+from yt_dlp import YoutubeDL
 
-TOKEN = os.environ.get("TOKEN")
-bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
+# 1. Servidor Web (Flask) para manter o Render ativo
+app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot online 24h!"
+    return "Bot de Downloads a funcionar!"
 
-@bot.message_handler(commands=['start'])
-def start(m):
-    bot.reply_to(m, "Fala! Manda link do TikTok, Insta, Face ou YouTube que eu baixo sem marca d'agua.")
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
-@bot.message_handler(func=lambda m: True)
-def baixar(m):
-    url = m.text
-    if "http" not in url:
-        return
-    msg = bot.reply_to(m, "⏳ Baixando...")
-    try:
-        opts = {'outtmpl': 'video.%(ext)s', 'format': 'mp4', 'quiet': True, 'noplaylist': True}
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-        with open(filename, 'rb') as f:
-            bot.send_video(m.chat.id, f, caption="Pronto! ✅ @baixatudo1921_bot")
-        os.remove(filename)
-        bot.delete_message(m.chat.id, msg.message_id)
-    except Exception as e:
-        bot.reply_to(m, f"Erro nesse link: {e}")
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.start()
 
-def run_bot():
+# 2. Inicialização do Bot do Telegram
+TOKEN = os.environ.get("TELEGRAM_TOKEN")
+
+if not TOKEN:
+    print("ERRO: TELEGRAM_TOKEN não configurado nas variáveis de ambiente.")
+else:
+    bot = telebot.TeleBot(TOKEN)
+
+    @bot.message_handler(commands=['start', 'help'])
+    def send_welcome(message):
+        bot.reply_to(
+            message, 
+            "👋 Olá! Envia o link de um vídeo (Instagram, TikTok, YouTube) para eu fazer o download."
+        )
+
+    @bot.message_handler(func=lambda message: True)
+    def download_video(message):
+        url = message.text.strip()
+
+        if not url.startswith("http"):
+            bot.reply_to(message, "⚠️ Envia um link válido (começado por http ou https).")
+            return
+
+        msg_espera = bot.reply_to(message, "⏳ A processar o vídeo, aguarda um momento...")
+
+        ydl_opts = {
+            'format': 'best',
+            'outtmpl': 'video_%(id)s.%(ext)s',
+            'quiet': True,
+            'no_warnings': True,
+        }
+
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                
+                if info is None:
+                    bot.edit_message_text("❌ Não foi possível extrair informação deste link.", chat_id=message.chat.id, message_id=msg_espera.message_id)
+                    return
+
+                filename = ydl.prepare_filename(info)
+
+            with open(filename, 'rb') as video_file:
+                bot.send_video(message.chat.id, video_file)
+
+            bot.delete_message(chat_id=message.chat.id, message_id=msg_espera.message_id)
+            if os.path.exists(filename):
+                os.remove(filename)
+
+        except Exception as e:
+            print(f"Erro ao transferir vídeo: {e}")
+            bot.edit_message_text("❌ Ocorreu um erro ao tentar transferir este vídeo.", chat_id=message.chat.id, message_id=msg_espera.message_id)
+
+    keep_alive()
+    print("Bot do Telegram iniciado...")
     bot.infinity_polling()
-
-threading.Thread(target=run_bot).start()
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
