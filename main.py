@@ -70,11 +70,11 @@ def process_link(message):
         bot.reply_to(message, "Por favor, envie um link válido de um vídeo.")
         return
 
-    msg_status = bot.reply_to(message, "⏳ A processar o vídeo, aguarde um momento...")
+    msg_status = bot.reply_to(message, "⏳ Processando o vídeo, aguarde um momento...")
 
     try:
         ydl_opts = {
-            'format': 'best',
+            'format': 'b[filesize<50M]/best[filesize<50M]/best',
             'outtmpl': '/tmp/%(id)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
@@ -82,10 +82,13 @@ def process_link(message):
             'nocheckcertificate': True,
             'ignoreerrors': False,
             'logtostderr': False,
-            'add_header': [
-                'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
-                'Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7'
-            ]
+            'geo_bypass': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+            }
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -103,7 +106,7 @@ def process_link(message):
     except Exception as e:
         print(f"Erro detalhado no download: {e}")
         bot.edit_message_text(
-            f"❌ Não foi possível baixar este vídeo.\n\nMotivo: O link pode ser privado, expirado ou exceder o limite de 50MB.",
+            f"❌ Não foi possível baixar este vídeo.\n\nMotivo: O link pode ser privado, expirado ou exceder o limite de 50MB do Telegram.",
             chat_id=message.chat.id,
             message_id=msg_status.message_id
         )
